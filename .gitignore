@@ -1,0 +1,39 @@
+# 数据集文件
+*.csv
+*.jpg
+*.png
+*.jpeg
+*.gif
+*.zip
+
+# 缓存文件
+__pycache__/
+*.py[cod]
+*$py.class
+.ipynb_checkpoints/
+*.pth
+
+# 日志文件
+logs/
+*.log
+tensorboard/
+runs/
+
+# 模型文件
+*.pt
+*.pth
+*.ckpt
+
+# IDE相关
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 其他特定文件
+lab1/predict_labels.txt
+lab1/demo.py
