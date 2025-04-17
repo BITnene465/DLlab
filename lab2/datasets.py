@@ -5,8 +5,6 @@ from torch.utils.data import Dataset
 from build_vocab import MyTokenizer
 import torch
 
-from utils import structure_mr_field
-
 class E2EDataset(Dataset):
     def __init__(self, csv_file, tokenizer, max_src_len=50, max_tgt_len=50):
         """
@@ -16,7 +14,7 @@ class E2EDataset(Dataset):
             max_src_len: 源序列最大长度
             max_tgt_len: 目标序列最大长度
         """
-        self.df = structure_mr_field(csv_file)  # 读取数据文件并结构化mr字段
+        self.df = pd.read_csv(csv_file, encoding='utf-8')  
         self.tokenizer = tokenizer
         self.max_src_len = max_src_len
         self.max_tgt_len = max_tgt_len

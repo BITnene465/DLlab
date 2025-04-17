@@ -1,10 +1,9 @@
 import json
 import os
 import re
+import pandas as pd
 import nltk
 from collections import Counter
-
-from utils import structure_mr_field
 
 # 词汇表类
 class MyVocabulary:
@@ -138,7 +137,7 @@ def get_tokenizer_from_file(vocab_path):
 def tokenize_csv_file(file_path):
     """从CSV文件中读取并标记文本"""
     all_tokens = []
-    df = structure_mr_field(file_path)
+    df = pd.read_csv(file_path, encoding='utf-8')
     for _, row in df.iterrows():
         # 处理mr字段（输入）
         mr_text = row.get('mr', None)
