@@ -35,7 +35,7 @@ def calculate_bleu4(references, hypotheses):
         smoothing_function=smoothie
     )
 
-def train_one_epoch(model, dataloader, optimizer, criterion, device, clip=1.0):
+def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_forcing_ratio=1.0, clip=1.0):
     """
     Args:
         model: 模型实例
@@ -62,7 +62,8 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, clip=1.0):
             input_ids=src_ids,
             valid_src_len=src_len,
             max_tgt_len=tgt_ids.size(1),
-            target_ids=tgt_ids
+            target_ids=tgt_ids,
+            teacher_forcing_ratio=teacher_forcing_ratio,
         )
         output = output.view(-1, output.shape[-1])
         tgt_ids = tgt_ids.view(-1)
@@ -144,7 +145,7 @@ def validate(model, dataloader, criterion, device):
     return val_loss / len(dataloader), bleu4
 
 def train(model, train_dataloader, valid_dataloader, optimizer, criterion, device, 
-          n_epochs, save_dir, patience=3, clip=1.0, best_model_path=None):
+          n_epochs, save_dir, patience=3, clip=1.0, tf_ratio=1.0, tf_decay=0.0, tf_min=1.0, best_model_path=None):
     """ 
     Args:
         model: 模型实例
@@ -181,7 +182,7 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
     for epoch in range(n_epochs):
         start_time = time.time()
         # 训练一个epoch
-        train_loss = train_one_epoch(model, train_dataloader, optimizer, criterion, device, clip)
+        train_loss = train_one_epoch(model, train_dataloader, optimizer, criterion, device, tf_ratio, clip)
         train_losses.append(train_loss)
         # 在验证集上评估
         valid_loss, valid_bleu = validate(model, valid_dataloader, criterion, device)
@@ -208,6 +209,9 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
         if patience_counter >= patience:
             print(f"连续 {patience} 个epoch验证损失没有改善，提前停止训练")
             break
+        
+        # scheduled sampling 实现
+        tf_ratio = max(tf_ratio-tf_decay, tf_min)
     
     # 保存训练历史
     history = {
@@ -232,18 +236,22 @@ def get_default_config():
     """返回默认配置"""
     return {
         "vocab_path": "./vocab.json",
-        "embed_size": 200,
+        "embed_size": 256,
         "batch_size": 64,
         "learning_rate": 0.001,
         "weight_decay": 1e-5,
         "clip": 5.0,
         "n_epochs": 30,
         "patience": 10,
+        "dropout_p": 0.3,
         "max_src_len": 40,
         "max_tgt_len": 40,
         "dataset_dir": "./e2e_dataset",
         "save_dir": None, # 使用超参数命名
-        "best_model_path": None  # 如果要继续训练，可以指定
+        "best_model_path": None,  # 如果要继续训练，可以指定
+        "tf_ratio": 1.0,  # teacher forcing ratio (初始值)
+        "tf_decay": 0.0,  # teacher forcing 衰减率
+        "tf_min": 1.0,    # teacher forcing 最小值
     }
 
 if __name__ == "__main__":
@@ -272,6 +280,10 @@ if __name__ == "__main__":
     parser.add_argument('--clip', type=float, help='梯度裁剪阈值')
     parser.add_argument('--n_epochs', type=int, help='训练轮数')
     parser.add_argument('--patience', type=int, help='早停耐心值')
+    parser.add_argument('--dropout_p', type=float, help='dropout probability')
+    parser.add_argument('--tf_ratio', type=float, help='teacher forcing ratio (initial value, default=1.0)', default=1.0)
+    parser.add_argument('--tf_decay', type=float, help='teacher forcing decay rate (default=0.0)', default=0.0)
+    parser.add_argument('--tf_min', type=float, help='minimum teacher forcing ratio (default=1.0)', default=1.0)
     
     # 保存参数
     parser.add_argument('--save_dir', type=str, help='模型保存目录')
@@ -316,7 +328,7 @@ if __name__ == "__main__":
     train_path = os.path.join(dataset_dir, "trainset.csv")
     valid_path = os.path.join(dataset_dir, "devset.csv")
     
-    # 提取超参数
+    # 超参数
     vocab_path = config["vocab_path"]
     embed_size = config["embed_size"]
     batch_size = config["batch_size"]
@@ -325,11 +337,17 @@ if __name__ == "__main__":
     clip = config["clip"]
     n_epochs = config["n_epochs"]
     patience = config["patience"]
+    dropout_p = config["dropout_p"]
+    # teacher forcing 相关超参数
+    tf_ratio = config["tf_ratio"]
+    tf_decay = config["tf_decay"]
+    tf_min = config["tf_min"]
+    # 数据集超参数
     max_src_len = config["max_src_len"]
     max_tgt_len = config["max_tgt_len"]
     
     if config["save_dir"] is None:
-        save_dir = f"./embed{embed_size}_batch{batch_size}_lr{learning_rate}_clip{clip}"
+        save_dir = f"./embed{embed_size}_batch{batch_size}_lr{learning_rate}_clip{clip}_dp{dropout_p}"    # 使用超参数命名
     else:
         save_dir = config["save_dir"]
     
@@ -370,7 +388,7 @@ if __name__ == "__main__":
     )
     
     # 训练
-    model = Seq2SeqModel(tokenizer.vocab_size, embed_size, tokenizer)
+    model = Seq2SeqModel(tokenizer.vocab_size, embed_size, tokenizer, dropout_p=dropout_p)
     model.to(device)
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
@@ -386,7 +404,10 @@ if __name__ == "__main__":
         save_dir=save_dir,
         patience=patience,
         clip=clip,
-        best_model_path=best_model_path
+        tf_ratio=tf_ratio,
+        tf_decay=tf_decay,
+        tf_min=tf_min,
+        best_model_path=best_model_path,
     )
     # 绘图
     plt.figure(figsize=(10, 6))
@@ -397,4 +418,3 @@ if __name__ == "__main__":
     plt.legend()
     plt.title('train & validation loss curve')
     plt.savefig(os.path.join(save_dir, 'loss_history.png'))
-    plt.show()

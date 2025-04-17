@@ -39,7 +39,7 @@ class BahdanauAttention(nn.Module):
     
 
 class Encoder(nn.Module):
-    def __init__(self, embedding, hidden_size, dropout_prob = 0.2, *args, **kwargs):
+    def __init__(self, embedding, hidden_size, dropout_p = 0.2, *args, **kwargs):
         """
         Args:
             embedding: 使用 nn.Embedding 创建的嵌入层
@@ -50,7 +50,7 @@ class Encoder(nn.Module):
         
         self.embedding = embedding
         self.lstm = nn.LSTM(input_size=hidden_size, hidden_size=hidden_size, batch_first=True, num_layers = 3)
-        self.dropout = nn.Dropout(p = dropout_prob)
+        self.dropout = nn.Dropout(p = dropout_p)
 
         # 归一化层： 缓解过拟合
         self.embed_norm = nn.LayerNorm(hidden_size)
@@ -208,13 +208,13 @@ class AttnDecoder(nn.Module):
                 
         
 class Seq2SeqModel(nn.Module):
-    def __init__(self, vocab_size: int, embed_size: int, tokenizer: MyTokenizer,  *args, **kwargs):
+    def __init__(self, vocab_size: int, embed_size: int, tokenizer: MyTokenizer, dropout_p=0.1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.tokenizer = tokenizer
         
         self.sharedEbedding = nn.Embedding(vocab_size, embed_size)
-        self.encoder = Encoder(self.sharedEbedding, embed_size)
-        self.decoder = AttnDecoder(self.sharedEbedding, embed_size, vocab_size)
+        self.encoder = Encoder(self.sharedEbedding, embed_size, dropout_p=dropout_p)
+        self.decoder = AttnDecoder(self.sharedEbedding, embed_size, vocab_size, dropout_p=dropout_p)
         
         # 初始化模型参数
         self._init_parameters()
@@ -258,7 +258,8 @@ class Seq2SeqModel(nn.Module):
         
         print("seq2seq 模型初始化完毕")
     
-    def forward(self, input_ids, valid_src_len, max_tgt_len, target_ids=None, teacher_forcing=False):
+    
+    def forward(self, input_ids, valid_src_len, max_tgt_len, target_ids=None, teacher_forcing_ratio=1.0):
         
         # if add_eos_token_id:
         #     eos_token_id = self.tokenizer.eos_token_id
@@ -267,20 +268,25 @@ class Seq2SeqModel(nn.Module):
     
         # input_ids 已经包含 eos_token, 并且已经被填充或者截断 （预处理阶段）
         encoder_outputs, encoder_hidden = self.encoder(input_ids, valid_src_len=valid_src_len)
-        if teacher_forcing:
-            decoder_outputs, decoder_hidden, attentions = self.decoder(encoder_outputs=encoder_outputs, 
-                                                                    encoder_hidden=encoder_hidden,
-                                                                    valid_src_len = valid_src_len,
-                                                                    max_tgt_len = max_tgt_len, 
-                                                                    start_token_id=self.tokenizer.sos_token_id,
-                                                                    target=target_ids)
-        else:
-            decoder_outputs, decoder_hidden, attentions = self.decoder(encoder_outputs=encoder_outputs, 
+        if target_ids is None: # 不使用 teacher forcing
+            decoder_outputs, decoder_hidden, attentions = self.decoder(
+                                                                    encoder_outputs=encoder_outputs, 
                                                                     encoder_hidden=encoder_hidden,
                                                                     valid_src_len = valid_src_len,
                                                                     max_tgt_len = max_tgt_len, 
                                                                     start_token_id=self.tokenizer.sos_token_id,
                                                                     target=None)
+        else:   # 使用teacher forcing
+            if torch.rand(1).item() >= teacher_forcing_ratio:
+                target_ids = None   # 如果大于ratio，则不使用 teacher forcing
+            decoder_outputs, decoder_hidden, attentions = self.decoder(
+                                                                    encoder_outputs=encoder_outputs, 
+                                                                    encoder_hidden=encoder_hidden,
+                                                                    valid_src_len = valid_src_len,
+                                                                    max_tgt_len = max_tgt_len, 
+                                                                    start_token_id=self.tokenizer.sos_token_id,
+                                                                    target=target_ids)
+
         return decoder_outputs, decoder_hidden, attentions
     
     def generate_e2e(text, clear_special_token=True):
