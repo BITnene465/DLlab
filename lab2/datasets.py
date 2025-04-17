@@ -1,3 +1,4 @@
+# 数据集相关定义和逻辑
 import re
 import pandas as pd
 from torch.utils.data import Dataset
@@ -30,6 +31,24 @@ class E2EDataset(Dataset):
         # 返回预处理好的数据
         return self.processed_data[idx]
     
+    def get_grouped_data(self):
+        """返回按MR分组的数据，用于多参考评估"""
+        grouped_data = {}
+        for item in self.processed_data:
+            src_text = item['src_text']
+            if src_text not in grouped_data:
+                grouped_data[src_text] = {
+                    'src_ids': item['src_ids'],
+                    'src_len': item['src_len'],
+                    'tgt_text_list': [item['tgt_text']],
+                    'tgt_tokens_list': [self.tokenizer.decode(item['tgt_ids'].tolist())],
+                }
+            else:
+                grouped_data[src_text]['tgt_text_list'].append(item['tgt_text'])
+                grouped_data[src_text]['tgt_tokens_list'].append(self.tokenizer.decode(item['tgt_ids'].tolist()))
+        return grouped_data
+    
+    
     def _process_row(self, idx):
         """预处理单行数据"""
         # 获取一条数据
@@ -58,4 +77,3 @@ class E2EDataset(Dataset):
             'src_text': src_text,
             'tgt_text': tgt_text
         }
-

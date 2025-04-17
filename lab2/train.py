@@ -44,6 +44,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
         criterion: 损失函数
         device: 设备
         clip: 梯度裁剪阈值
+        teacher_forcing_ratio: teacher forcing 比例
     
     Returns:
         epoch_loss: 平均损失
@@ -77,8 +78,8 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
     return epoch_loss / len(dataloader)
 
 
-def validate(model, dataloader, criterion, device):
-    """在验证集上评估模型"""
+def validate(model: Seq2SeqModel, grouped_data: dict, device):
+    """使用多参考评估模型, batch_size=1"""
     model.eval()
     
     # 用于计算BLEU的参考和假设
@@ -86,64 +87,40 @@ def validate(model, dataloader, criterion, device):
     hypotheses = []
     
     with torch.no_grad():
-        for batch in tqdm(dataloader, desc="validating"):
-            # 准备数据
-            src_ids = batch['src_ids'].to(device)
-            tgt_ids = batch['tgt_ids'].to(device)
-            src_len = batch['src_len'].cpu()
+        for _, data in tqdm(grouped_data.items(), desc="validating..."):
+            src_ids = data['src_ids'].unsqueeze(0).to(device)  # 添加batch维度
+            src_len = torch.tensor([data['src_len']]).cpu()
+            outputs, _, _ = model(
+                input_ids=src_ids,
+                valid_src_len=src_len,
+                max_tgt_len=valid_dataset.max_tgt_len,
+                target_ids=None,  # 不使用 teacher forcing
+            )
+            predicted_ids = outputs.argmax(dim=2).squeeze(0).cpu().numpy().tolist()
+            predicted_ids = [id for id in predicted_ids if id not in model.tokenizer.vocab.special_tokens]  # 去除 special_tokens
+            predicted_tokens = model.tokenizer.decode(predicted_ids)  # 解码预测的token
             
+            # 将参考和预测添加到评估列表
+            tgt_tokens_list = data['tgt_tokens_list']
+            for i in range(len(tgt_tokens_list)):
+                tgt_tokens_list[i] = [id for id in tgt_tokens_list[i] if id not in model.tokenizer.vocab.special_tokens]
+            references.append(tgt_tokens_list)
+            hypotheses.append(predicted_tokens)
            
-            # 使用贪婪搜索解码(取概率最大的token)
-            output, _, _ = model(
-            input_ids=src_ids,
-            valid_src_len=src_len,
-            max_tgt_len=tgt_ids.size(1),
-            target_ids=None  # 不使用teacher forcing
-             )
-            _, predictions = torch.max(output, dim=2)
-            
-            # 处理每个样本的预测和参考
-            batch_size = predictions.size(0)
-            for i in range(batch_size):
-                # 处理预测序列，移除特殊token
-                pred_tokens = []
-                for token_id in predictions[i].cpu().numpy():
-                    # 如果是EOS或PAD，停止添加token
-                    if token_id == model.tokenizer.eos_token_id or token_id == model.tokenizer.pad_token_id:
-                        break
-                    # 跳过SOS和PAD token
-                    if token_id != model.tokenizer.sos_token_id and token_id != model.tokenizer.pad_token_id:
-                        token = model.tokenizer.vocab.idx2token.get(token_id, "<UNK>")
-                        pred_tokens.append(token)
-                
-                # 处理参考序列，移除特殊token
-                ref_tokens = []
-                for token_id in tgt_ids[i].cpu().numpy():
-                    # 如果是EOS或PAD，停止添加token
-                    if token_id == model.tokenizer.eos_token_id or token_id == model.tokenizer.pad_token_id:
-                        break
-                    # 跳过SOS和PAD token
-                    if token_id != model.tokenizer.sos_token_id and token_id != model.tokenizer.pad_token_id:
-                        token = model.tokenizer.vocab.idx2token.get(token_id, "<UNK>")
-                        ref_tokens.append(token)
-                
-                # 添加到列表中用于计算BLEU
-                hypotheses.append(pred_tokens)
-                references.append([ref_tokens]) 
-    
     # 计算BLEU-4
     bleu4 = calculate_bleu4(references, hypotheses)
-    
     return bleu4
 
-def train(model, train_dataloader, valid_dataloader, optimizer, criterion, device, 
+
+
+def train(model, train_dataloader, valid_grouped_data, optimizer, criterion, device, 
           n_epochs, save_dir, patience=3, clip=1.0, tf_ratio=1.0, tf_decay=0.0, tf_min=1.0, 
           best_model_path=None):
     """ 
     Args:
         model: 模型实例
         train_dataloader: 训练数据加载器
-        valid_dataloader: 验证数据加载器
+        valid_grouped_data: 验证集的分组数据
         optimizer: 优化器
         criterion: 损失函数
         device: 设备
@@ -177,7 +154,7 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
         train_loss = train_one_epoch(model, train_dataloader, optimizer, criterion, device, tf_ratio, clip)
         train_losses.append(train_loss)
         # 在验证集上评估
-        valid_bleu = validate(model, valid_dataloader, criterion, device)
+        valid_bleu = validate(model, valid_grouped_data, device)
         valid_bleus.append(valid_bleu)  # 记录BLEU分数
         # 计算耗时
         end_time = time.time()
@@ -345,7 +322,7 @@ if __name__ == "__main__":
     
     # 加载词汇表
     tokenizer = get_tokenizer_from_file(vocab_path=vocab_path)
-    # 创建数据集和数据加载器
+    # 创建数据集
     train_dataset = E2EDataset(train_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len)
     valid_dataset = E2EDataset(valid_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len)
     
@@ -353,20 +330,6 @@ if __name__ == "__main__":
         train_dataset, 
         batch_size=batch_size, 
         shuffle=True, 
-        collate_fn=lambda x: {
-            'src_ids': torch.stack([item['src_ids'] for item in x]),
-            'tgt_ids': torch.stack([item['tgt_ids'] for item in x]),
-            'src_len': torch.tensor([item['src_len'] for item in x]),
-            'tgt_len': torch.tensor([item['tgt_len'] for item in x]),
-            'src_text': [item['src_text'] for item in x],
-            'tgt_text': [item['tgt_text'] for item in x]
-        }
-    )
-    
-    valid_dataloader = DataLoader(
-        valid_dataset, 
-        batch_size=batch_size, 
-        shuffle=False, 
         collate_fn=lambda x: {
             'src_ids': torch.stack([item['src_ids'] for item in x]),
             'tgt_ids': torch.stack([item['tgt_ids'] for item in x]),
@@ -386,7 +349,7 @@ if __name__ == "__main__":
     model, train_losses, valid_bleus = train(
         model=model,
         train_dataloader=train_dataloader,
-        valid_dataloader=valid_dataloader,
+        valid_grouped_data=valid_dataset.get_grouped_data(),   # 传入的是 验证集分组后的数据
         optimizer=optimizer,
         criterion=criterion,
         device=device,
