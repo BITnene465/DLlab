@@ -18,10 +18,10 @@ if __name__ == "__main__":
     tokenizer = get_tokenizer_from_file(vocab_path="vocab.json")
     model = Seq2SeqModel(
         vocab_size=tokenizer.vocab_size, 
-        embed_size=300,
+        embed_size=256,
         tokenizer=tokenizer
         )
-    model.load_model("./saved_models/model_epoch17_loss1.4159.pt")
+    model.load_model("./embed256_batch64_lr0.001_clip5.0_dp0.3/model_epoch28_loss3.8211_bleu0.1603.pt")
     # 测试集
     dataset_dir = "./e2e_dataset"
     test_path = os.path.join(dataset_dir, "testset.csv") 

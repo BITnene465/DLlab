@@ -121,6 +121,7 @@ class AttnDecoder(nn.Module):
         
     def forward(self, encoder_outputs, encoder_hidden, valid_src_len, max_tgt_len=50, start_token_id=0, target=None):
         """
+        使用 greedy search 或者 teacher forcing ，主要用于训练阶段
         Args:
             encoder_outputs : (batch_size, seq_length, hidden_size)
             encoder_hidden : (num_layers, batch_size, hidden_size)
@@ -143,8 +144,6 @@ class AttnDecoder(nn.Module):
         decoder_outputs = []  # 记录decoder输出词表id序列
         attentions = [] # 记录注意力矩阵序列，用于可视化
         
-        # 用于跟踪每个序列是否已经完成生成（使用 eos 判断）
-        # finished_sequences = torch.zeros(batch_size, dtype=torch.bool, device=encoder_outputs.device) 
        
         for i in range(max_tgt_len):
             decoder_output, decoder_hidden, attn_weights = self.forward_step(
@@ -162,7 +161,8 @@ class AttnDecoder(nn.Module):
                 decoder_input = target[:, i].unsqueeze(1)
             
             else:
-                # 使用自己的预测结果作为输入
+                # 使用自己的预测结果作为输入 -- greedy search
+                # decoder_output: (batch_size, output_size)
                 _, topi = decoder_output.topk(1)
                 decoder_input = topi.detach()   # 此处有必要detach,否则会导致该步的生成影响到前面所有步的梯度
                 
@@ -173,7 +173,6 @@ class AttnDecoder(nn.Module):
         
         return decoder_outputs, decoder_hidden, attentions
             
-        
     
     
     def forward_step(self, input_id, hidden, encoder_outputs, valid_src_len=None):
@@ -268,7 +267,7 @@ class Seq2SeqModel(nn.Module):
     
         # input_ids 已经包含 eos_token, 并且已经被填充或者截断 （预处理阶段）
         encoder_outputs, encoder_hidden = self.encoder(input_ids, valid_src_len=valid_src_len)
-        if target_ids is None: # 不使用 teacher forcing
+        if target_ids is None: # 不使用 teacher forcing -- 使用 greedy search
             decoder_outputs, decoder_hidden, attentions = self.decoder(
                                                                     encoder_outputs=encoder_outputs, 
                                                                     encoder_hidden=encoder_hidden,
@@ -280,20 +279,16 @@ class Seq2SeqModel(nn.Module):
             if torch.rand(1).item() >= teacher_forcing_ratio:
                 target_ids = None   # 如果大于ratio，则不使用 teacher forcing
             decoder_outputs, decoder_hidden, attentions = self.decoder(
-                                                                    encoder_outputs=encoder_outputs, 
-                                                                    encoder_hidden=encoder_hidden,
-                                                                    valid_src_len = valid_src_len,
-                                                                    max_tgt_len = max_tgt_len, 
-                                                                    start_token_id=self.tokenizer.sos_token_id,
-                                                                    target=target_ids)
+                                                                encoder_outputs=encoder_outputs, 
+                                                                encoder_hidden=encoder_hidden,
+                                                                valid_src_len = valid_src_len,
+                                                                max_tgt_len = max_tgt_len, 
+                                                                start_token_id=self.tokenizer.sos_token_id,
+                                                                target=target_ids)
 
         return decoder_outputs, decoder_hidden, attentions
     
-    def generate_e2e(text, clear_special_token=True):
-        """
-        端到端生成，输入字符串，输出字符串
-        """
-        return "=w=."
+        
     
     def save_model(self, path):
         torch.save(self.state_dict(), path)

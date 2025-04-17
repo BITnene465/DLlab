@@ -3,7 +3,6 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import time
 import json
@@ -12,6 +11,7 @@ from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 from seq2seq import Seq2SeqModel
 from build_vocab import get_tokenizer_from_file
 from datasets import E2EDataset
+from drawer import plot_train_curve, plot_attention
 
 
 def calculate_bleu4(references, hypotheses):
@@ -51,7 +51,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
     model.train()
     epoch_loss = 0
     
-    for batch in tqdm(dataloader, desc="training"):
+    for batch in tqdm(dataloader, desc=f"training...  tf_ratio:{teacher_forcing_ratio:.2f}"):
         # 准备数据
         src_ids = batch['src_ids'].to(device)
         tgt_ids = batch['tgt_ids'].to(device)
@@ -80,7 +80,6 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
 def validate(model, dataloader, criterion, device):
     """在验证集上评估模型"""
     model.eval()
-    val_loss = 0
     
     # 用于计算BLEU的参考和假设
     references = []
@@ -93,21 +92,14 @@ def validate(model, dataloader, criterion, device):
             tgt_ids = batch['tgt_ids'].to(device)
             src_len = batch['src_len'].cpu()
             
-            # 使用自回归方式生成（不使用teacher forcing）
+           
+            # 使用贪婪搜索解码(取概率最大的token)
             output, _, _ = model(
-                input_ids=src_ids,
-                valid_src_len=src_len,
-                max_tgt_len=tgt_ids.size(1),
-                target_ids=None  # 不使用teacher forcing
-            )
-            
-            # 计算损失
-            output_flatten = output.view(-1, output.shape[-1])
-            tgt_ids_flatten = tgt_ids.view(-1)
-            loss = criterion(output_flatten, tgt_ids_flatten)
-            val_loss += loss.item()
-            
-            # 获取预测结果
+            input_ids=src_ids,
+            valid_src_len=src_len,
+            max_tgt_len=tgt_ids.size(1),
+            target_ids=None  # 不使用teacher forcing
+             )
             _, predictions = torch.max(output, dim=2)
             
             # 处理每个样本的预测和参考
@@ -142,10 +134,11 @@ def validate(model, dataloader, criterion, device):
     # 计算BLEU-4
     bleu4 = calculate_bleu4(references, hypotheses)
     
-    return val_loss / len(dataloader), bleu4
+    return bleu4
 
 def train(model, train_dataloader, valid_dataloader, optimizer, criterion, device, 
-          n_epochs, save_dir, patience=3, clip=1.0, tf_ratio=1.0, tf_decay=0.0, tf_min=1.0, best_model_path=None):
+          n_epochs, save_dir, patience=3, clip=1.0, tf_ratio=1.0, tf_decay=0.0, tf_min=1.0, 
+          best_model_path=None):
     """ 
     Args:
         model: 模型实例
@@ -174,9 +167,8 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
         print(f"加载预训练模型: {best_model_path}")
     
     train_losses = []
-    valid_losses = []
     valid_bleus = []  # 添加BLEU记录
-    best_valid_loss = float('inf')
+    best_valid_bleu = 0
     patience_counter = 0
     
     for epoch in range(n_epochs):
@@ -185,17 +177,16 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
         train_loss = train_one_epoch(model, train_dataloader, optimizer, criterion, device, tf_ratio, clip)
         train_losses.append(train_loss)
         # 在验证集上评估
-        valid_loss, valid_bleu = validate(model, valid_dataloader, criterion, device)
-        valid_losses.append(valid_loss)
+        valid_bleu = validate(model, valid_dataloader, criterion, device)
         valid_bleus.append(valid_bleu)  # 记录BLEU分数
         # 计算耗时
         end_time = time.time()
         epoch_mins, epoch_secs = divmod(end_time - start_time, 60)
         # 检查是否是最佳模型
-        if valid_loss < best_valid_loss:
-            best_valid_loss = valid_loss
+        if valid_bleu > best_valid_bleu:
+            best_valid_bleu = valid_bleu
             patience_counter = 0
-            model_path = os.path.join(save_dir, f'model_epoch{epoch+1}_loss{valid_loss:.4f}_bleu{valid_bleu:.4f}.pt')
+            model_path = os.path.join(save_dir, f'model_epoch{epoch+1}_bleu{valid_bleu:.4f}.pt')
             model.save_model(model_path)
             best_model_path = model_path
             print(f"发现更好的模型，已保存到 {model_path}")
@@ -203,7 +194,7 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
             patience_counter += 1
         print(f'Epoch: {epoch+1:02} | 耗时: {epoch_mins}m {epoch_secs:.2f}s')
         print(f'\t训练损失: {train_loss:.4f}')
-        print(f'\t验证损失: {valid_loss:.4f} | BLEU-4: {valid_bleu:.4f}')
+        print(f'\t验证集 BLEU-4: {valid_bleu:.4f}')
         
         # 早停
         if patience_counter >= patience:
@@ -216,10 +207,9 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
     # 保存训练历史
     history = {
         'train_losses': train_losses,
-        'valid_losses': valid_losses,
         'valid_bleus': valid_bleus,  # 添加BLEU历史
+        'best_valid_bleu': best_valid_bleu,
         'best_model_path': best_model_path,
-        'best_valid_loss': best_valid_loss
     }
     
     with open(os.path.join(save_dir, 'training_history.json'), 'w') as f:
@@ -229,7 +219,7 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
     if best_model_path is not None:
         model.load_model(best_model_path)
     
-    return model, train_losses, valid_losses
+    return model, train_losses, valid_bleus
 
 
 def get_default_config():
@@ -249,7 +239,7 @@ def get_default_config():
         "dataset_dir": "./e2e_dataset",
         "save_dir": None, # 使用超参数命名
         "best_model_path": None,  # 如果要继续训练，可以指定
-        "tf_ratio": 1.0,  # teacher forcing ratio (初始值)
+        "tf_ratio": 1.0,  # teacher forcing ratio 初始值
         "tf_decay": 0.0,  # teacher forcing 衰减率
         "tf_min": 1.0,    # teacher forcing 最小值
     }
@@ -281,9 +271,9 @@ if __name__ == "__main__":
     parser.add_argument('--n_epochs', type=int, help='训练轮数')
     parser.add_argument('--patience', type=int, help='早停耐心值')
     parser.add_argument('--dropout_p', type=float, help='dropout probability')
-    parser.add_argument('--tf_ratio', type=float, help='teacher forcing ratio (initial value, default=1.0)', default=1.0)
-    parser.add_argument('--tf_decay', type=float, help='teacher forcing decay rate (default=0.0)', default=0.0)
-    parser.add_argument('--tf_min', type=float, help='minimum teacher forcing ratio (default=1.0)', default=1.0)
+    parser.add_argument('--tf_ratio', type=float, help='teacher forcing ratio (initial value)')
+    parser.add_argument('--tf_decay', type=float, help='teacher forcing decay rate')
+    parser.add_argument('--tf_min', type=float, help='minimum teacher forcing ratio')
     
     # 保存参数
     parser.add_argument('--save_dir', type=str, help='模型保存目录')
@@ -393,7 +383,7 @@ if __name__ == "__main__":
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     print("开始训练模型...")
-    model, train_losses, valid_losses = train(
+    model, train_losses, valid_bleus = train(
         model=model,
         train_dataloader=train_dataloader,
         valid_dataloader=valid_dataloader,
@@ -410,11 +400,4 @@ if __name__ == "__main__":
         best_model_path=best_model_path,
     )
     # 绘图
-    plt.figure(figsize=(10, 6))
-    plt.plot(train_losses, label='train loss')
-    plt.plot(valid_losses, label='validation loss')
-    plt.xlabel('epoch')
-    plt.ylabel('loss')
-    plt.legend()
-    plt.title('train & validation loss curve')
-    plt.savefig(os.path.join(save_dir, 'loss_history.png'))
+    plot_train_curve(train_losses, valid_bleus, save_dir)
