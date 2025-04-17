@@ -34,6 +34,40 @@ def calculate_bleu4(references, hypotheses):
         weights=(0.25, 0.25, 0.25, 0.25), 
         smoothing_function=smoothie
     )
+    
+def validate(model: Seq2SeqModel, grouped_data: dict, device):
+    """使用多参考评估模型, batch_size=1"""
+    model.eval()
+    
+    # 用于计算BLEU的参考和假设
+    references = []
+    hypotheses = []
+    
+    with torch.no_grad():
+        for _, data in tqdm(grouped_data.items(), desc="validating..."):
+            src_ids = data['src_ids'].unsqueeze(0).to(device)  # 添加batch维度
+            src_len = torch.tensor([data['src_len']]).cpu()
+            outputs, _, _ = model(
+                input_ids=src_ids,
+                valid_src_len=src_len,
+                max_tgt_len=valid_dataset.max_tgt_len,
+                target_ids=None,  # 不使用 teacher forcing
+            )
+            predicted_ids = outputs.argmax(dim=2).squeeze(0).cpu().numpy().tolist()
+            predicted_ids = [id for id in predicted_ids if id not in model.tokenizer.vocab.special_tokens]  # 去除 special_tokens
+            predicted_tokens = model.tokenizer.decode(predicted_ids)  # 解码预测的token
+            
+            # 将参考和预测添加到评估列表
+            tgt_tokens_list = data['tgt_tokens_list']
+            for i in range(len(tgt_tokens_list)):
+                tgt_tokens_list[i] = [id for id in tgt_tokens_list[i] if id not in model.tokenizer.vocab.special_tokens]
+            references.append(tgt_tokens_list)
+            hypotheses.append(predicted_tokens)
+           
+    # 计算BLEU-4
+    bleu4 = calculate_bleu4(references, hypotheses)
+    return bleu4
+
 
 def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_forcing_ratio=1.0, clip=1.0):
     """
@@ -76,41 +110,6 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
         epoch_loss += loss.item()
     
     return epoch_loss / len(dataloader)
-
-
-def validate(model: Seq2SeqModel, grouped_data: dict, device):
-    """使用多参考评估模型, batch_size=1"""
-    model.eval()
-    
-    # 用于计算BLEU的参考和假设
-    references = []
-    hypotheses = []
-    
-    with torch.no_grad():
-        for _, data in tqdm(grouped_data.items(), desc="validating..."):
-            src_ids = data['src_ids'].unsqueeze(0).to(device)  # 添加batch维度
-            src_len = torch.tensor([data['src_len']]).cpu()
-            outputs, _, _ = model(
-                input_ids=src_ids,
-                valid_src_len=src_len,
-                max_tgt_len=valid_dataset.max_tgt_len,
-                target_ids=None,  # 不使用 teacher forcing
-            )
-            predicted_ids = outputs.argmax(dim=2).squeeze(0).cpu().numpy().tolist()
-            predicted_ids = [id for id in predicted_ids if id not in model.tokenizer.vocab.special_tokens]  # 去除 special_tokens
-            predicted_tokens = model.tokenizer.decode(predicted_ids)  # 解码预测的token
-            
-            # 将参考和预测添加到评估列表
-            tgt_tokens_list = data['tgt_tokens_list']
-            for i in range(len(tgt_tokens_list)):
-                tgt_tokens_list[i] = [id for id in tgt_tokens_list[i] if id not in model.tokenizer.vocab.special_tokens]
-            references.append(tgt_tokens_list)
-            hypotheses.append(predicted_tokens)
-           
-    # 计算BLEU-4
-    bleu4 = calculate_bleu4(references, hypotheses)
-    return bleu4
-
 
 
 def train(model, train_dataloader, valid_grouped_data, optimizer, criterion, device, 
