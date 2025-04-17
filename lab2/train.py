@@ -228,7 +228,82 @@ def train(model, train_dataloader, valid_dataloader, optimizer, criterion, devic
     return model, train_losses, valid_losses
 
 
+def get_default_config():
+    """返回默认配置"""
+    return {
+        "vocab_path": "./vocab.json",
+        "embed_size": 200,
+        "batch_size": 64,
+        "learning_rate": 0.001,
+        "weight_decay": 1e-5,
+        "clip": 5.0,
+        "n_epochs": 30,
+        "patience": 10,
+        "max_src_len": 40,
+        "max_tgt_len": 40,
+        "dataset_dir": "./e2e_dataset",
+        "save_dir": None, # 使用超参数命名
+        "best_model_path": None  # 如果要继续训练，可以指定
+    }
+
 if __name__ == "__main__":
+    import argparse
+    import json
+    
+    # 设置命令行参数
+    parser = argparse.ArgumentParser(description='训练Seq2Seq模型')
+    
+    # 配置文件参数
+    parser.add_argument('--config', type=str, help='配置文件路径（JSON格式）')
+    
+    # 数据集参数
+    parser.add_argument('--dataset_dir', type=str, help='数据集目录')
+    parser.add_argument('--vocab_path', type=str, help='词汇表路径')
+    parser.add_argument('--max_src_len', type=int, help='源序列最大长度')
+    parser.add_argument('--max_tgt_len', type=int, help='目标序列最大长度')
+    
+    # 模型参数
+    parser.add_argument('--embed_size', type=int, help='嵌入层大小')
+    
+    # 训练参数
+    parser.add_argument('--batch_size', type=int, help='批次大小')
+    parser.add_argument('--learning_rate', type=float, help='学习率')
+    parser.add_argument('--weight_decay', type=float, help='权重衰减')
+    parser.add_argument('--clip', type=float, help='梯度裁剪阈值')
+    parser.add_argument('--n_epochs', type=int, help='训练轮数')
+    parser.add_argument('--patience', type=int, help='早停耐心值')
+    
+    # 保存参数
+    parser.add_argument('--save_dir', type=str, help='模型保存目录')
+    parser.add_argument('--best_model_path', type=str, help='最佳模型路径（用于继续训练）')
+    
+    # 解析命令行参数
+    args = parser.parse_args()
+    
+    # 首先获取默认配置
+    config = get_default_config()
+    
+    # 如果提供了配置文件，从中加载配置覆盖默认值
+    if args.config:
+        try:
+            with open(args.config, 'r', encoding='utf-8') as f:
+                file_config = json.load(f)
+                config.update(file_config)
+                print(f"已从{args.config}加载配置")
+        except Exception as e:
+            print(f"读取配置文件出错: {e}")
+            exit(1)
+    
+    # 命令行参数覆盖配置文件和默认值
+    for arg in vars(args):
+        if getattr(args, arg) is not None:
+            config[arg] = getattr(args, arg)
+    
+    # 显示最终配置
+    print("训练配置:")
+    for k, v in config.items():
+        print(f"  {k}: {v}")
+    
     # 设置工作目录
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     
@@ -237,26 +312,31 @@ if __name__ == "__main__":
     print(f"device: {device}")
     
     # 数据集路径
-    dataset_dir = "./e2e_dataset"
+    dataset_dir = config["dataset_dir"]
     train_path = os.path.join(dataset_dir, "trainset.csv")
     valid_path = os.path.join(dataset_dir, "devset.csv")
     
-    # 超参数
-    vocab_path = "./vocab.json"
-    embed_size = 512
-    batch_size = 64
-    learning_rate = 0.00005
-    weight_decay = 1e-5
-    clip = 5
-    n_epochs = 30
-    patience = 10
-    max_src_len = 40
-    max_tgt_len = 40
-    save_dir = "./saved_models"
+    # 提取超参数
+    vocab_path = config["vocab_path"]
+    embed_size = config["embed_size"]
+    batch_size = config["batch_size"]
+    learning_rate = config["learning_rate"]
+    weight_decay = config["weight_decay"]
+    clip = config["clip"]
+    n_epochs = config["n_epochs"]
+    patience = config["patience"]
+    max_src_len = config["max_src_len"]
+    max_tgt_len = config["max_tgt_len"]
+    
+    if config["save_dir"] is None:
+        save_dir = f"./embed{embed_size}_batch{batch_size}_lr{learning_rate}_clip{clip}"
+    else:
+        save_dir = config["save_dir"]
+    
+    best_model_path = config["best_model_path"]
     
     # 加载词汇表
     tokenizer = get_tokenizer_from_file(vocab_path=vocab_path)
-    
     # 创建数据集和数据加载器
     train_dataset = E2EDataset(train_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len)
     valid_dataset = E2EDataset(valid_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len)
@@ -289,13 +369,11 @@ if __name__ == "__main__":
         }
     )
     
-    # 初始化模型
+    # 训练
     model = Seq2SeqModel(tokenizer.vocab_size, embed_size, tokenizer)
     model.to(device)
-    # 定义损失函数和优化器
     criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    # 训练模型
     print("开始训练模型...")
     model, train_losses, valid_losses = train(
         model=model,
@@ -307,11 +385,10 @@ if __name__ == "__main__":
         n_epochs=n_epochs,
         save_dir=save_dir,
         patience=patience,
-        clip=clip
+        clip=clip,
+        best_model_path=best_model_path
     )
-    
-    
-    # 绘制训练历史
+    # 绘图
     plt.figure(figsize=(10, 6))
     plt.plot(train_losses, label='train loss')
     plt.plot(valid_losses, label='validation loss')

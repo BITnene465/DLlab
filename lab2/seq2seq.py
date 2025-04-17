@@ -191,8 +191,10 @@ class AttnDecoder(nn.Module):
         embedded = self.embedding(input_id)
         embedded = self.embed_norm(embedded)
         embedded = self.dropout(embedded)
+                
+        # hidden: (h_n, c_n)，h_n:(num_layers, batch_size, hidden_size), 使用第一层向量作为查询
+        query = hidden[0][0].unsqueeze(1)  
         
-        query = hidden[0][-1].unsqueeze(1)    # 使用 h_n[-1] 作为查询向量, query 形状为 [btach_size, 1, hidden_size]
         context, attn_weights = self.attention(query, encoder_outputs, valid_src_len)
         context = self.context_norm(context)
         
