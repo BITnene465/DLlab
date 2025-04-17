@@ -149,7 +149,7 @@ def tokenize_csv_file(file_path):
         # 处理ref字段（输出）
         ref_text = row.get('ref', None)
         if ref_text is not None:
-            ref_tokens = MyTokenizer.tokenize_eng(mr_text)
+            ref_tokens = MyTokenizer.tokenize_eng(ref_text)
             all_tokens.extend(ref_tokens)
     
     return all_tokens
