@@ -14,14 +14,14 @@ def test(test_loader, model, save_path):
 if __name__ == "__main__":
     os.chdir(os.path.dirname(os.path.abspath(__file__)))
     # 构建模型
-    batch_size = 64
+    batch_size = 16
     tokenizer = get_tokenizer_from_file(vocab_path="vocab.json")
     model = Seq2SeqModel(
         vocab_size=tokenizer.vocab_size, 
         embed_size=256,
         tokenizer=tokenizer
         )
-    model.load_model("./embed256_batch64_lr0.001_clip5.0_dp0.3/model_epoch28_loss3.8211_bleu0.1603.pt")
+    model.load_model("last.pt")
     # 测试集
     dataset_dir = "./e2e_dataset"
     test_path = os.path.join(dataset_dir, "testset.csv") 
@@ -61,7 +61,7 @@ if __name__ == "__main__":
             # Display the input and output
             for i in range(len(src_text)):
                 print(f"Input: {src_text[i]}")
-                print(f"Output: {tokenizer.decode_engtext(outputs[i])}")
+                print(f"Output: {tokenizer.decode_engtext(outputs[i], endwitheos=True)}")
             break  # Only process one batch
     
     # 测试

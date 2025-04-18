@@ -49,9 +49,18 @@ class Encoder(nn.Module):
         super().__init__(*args, **kwargs)
         
         self.embedding = embedding
-        self.lstm = nn.LSTM(input_size=hidden_size, hidden_size=hidden_size, batch_first=True, num_layers = 3)
+        self.lstm = nn.LSTM(
+            input_size=hidden_size, 
+            hidden_size=hidden_size, 
+            batch_first=True, 
+            num_layers=3, 
+            bidirectional=True
+        )
         self.dropout = nn.Dropout(p = dropout_p)
 
+        # 将双向LSTM的输出映射到单向
+        self.fc = nn.Linear(hidden_size*2, hidden_size) 
+        
         # 归一化层： 缓解过拟合
         self.embed_norm = nn.LayerNorm(hidden_size)
         self.output_norm = nn.LayerNorm(hidden_size)
@@ -90,10 +99,28 @@ class Encoder(nn.Module):
             total_length=input_ids.size(1),
         )
         
+        # 处理双向输出，形状为(batch_size, seq_len, hidden_size*2)
+        output = self.fc(output)  # 将双向输出映射回(batch_size, seq_len, hidden_size)
+        
+        # 处理隐藏状态以适配解码器 -- 双向LSTM的隐藏状态形状为(num_layers*2, batch, hidden_size)
+        num_layers = hidden[0].size(0) // 2
+        
+        # 重组隐藏状态 - 将前向和后向的隐状态合并
+        # 提取前向和后向的隐藏状态，分别是奇数层和偶数层
+        hidden_forward = hidden[0][:num_layers]
+        hidden_backward = hidden[0][num_layers:]
+        
+        # 合并前向和后向隐藏状态
+        hidden_combined = hidden_forward + hidden_backward
+        
+        # 做同样的处理对cell状态
+        cell_forward = hidden[1][:num_layers]
+        cell_backward = hidden[1][num_layers:]
+        cell_combined = cell_forward + cell_backward   # todo 融合方式有待改进
        
         output = self.output_norm(output)   # 输出归一化
         
-        return output, hidden
+        return output, (hidden_combined, cell_combined) 
     
 
 class AttnDecoder(nn.Module):
