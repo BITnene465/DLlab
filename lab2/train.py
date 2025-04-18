@@ -54,13 +54,14 @@ def validate(model: Seq2SeqModel, grouped_data: dict, device):
                 target_ids=None,  # 不使用 teacher forcing
             )
             predicted_ids = outputs.argmax(dim=2).squeeze(0).cpu().numpy().tolist()
-            predicted_ids = [id for id in predicted_ids if id not in model.tokenizer.vocab.special_tokens]  # 去除 special_tokens
-            predicted_tokens = model.tokenizer.decode(predicted_ids)  # 解码预测的token
+            predicted_tokens = model.tokenizer.decode(predicted_ids, endwitheos=True)  # 解码预测的token, 到<EOS>截断
             
             # 将参考和预测添加到评估列表
             tgt_tokens_list = data['tgt_tokens_list']
             for i in range(len(tgt_tokens_list)):
-                tgt_tokens_list[i] = [id for id in tgt_tokens_list[i] if id not in model.tokenizer.vocab.special_tokens]
+                if "<EOS>" in tgt_tokens_list[i]:    # 到 <EOS>截断
+                    eos_index = tgt_tokens_list[i].index("<EOS>")
+                    tgt_tokens_list[i] = tgt_tokens_list[i][:eos_index]
             references.append(tgt_tokens_list)
             hypotheses.append(predicted_tokens)
            
@@ -190,6 +191,10 @@ def train(model, train_dataloader, valid_grouped_data, optimizer, criterion, dev
     
     with open(os.path.join(save_dir, 'training_history.json'), 'w') as f:
         json.dump(history, f)
+    
+    # 保存最后的模型
+    model_path = os.path.join(save_dir, 'last_model.pt')
+    model.save_model(model_path)
     
     # 加载最佳模型
     if best_model_path is not None:
@@ -342,7 +347,10 @@ if __name__ == "__main__":
     # 训练
     model = Seq2SeqModel(tokenizer.vocab_size, embed_size, tokenizer, dropout_p=dropout_p)
     model.to(device)
-    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
+    
+    # criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
+    criterion = nn.CrossEntropyLoss()
+    
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     print("开始训练模型...")
     model, train_losses, valid_bleus = train(

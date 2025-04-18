@@ -86,14 +86,20 @@ class MyTokenizer:
         ids = [self.vocab.token2idx.get(token, self.vocab.special_tokens["<UNK>"]) for token in tokens]
         return ids
 
-    def decode(self, ids):
+    def decode(self, ids, endwitheos=False):
         tokens = [self.vocab.idx2token.get(idx, "<UNK>") for idx in ids]
+        if endwitheos:
+            if "<EOS>" in tokens:
+                eos_index = tokens.index("<EOS>")
+                tokens = tokens[:eos_index]
         return tokens
     
-    def decode_engtext(self, ids, remove_special_tokens=True):
+    def decode_engtext(self, ids, endwitheos=True):
         tokens = self.decode(ids)
-        if remove_special_tokens:
-            tokens = [token for token in tokens if token not in self.vocab.special_tokens]
+        if endwitheos:
+            if "<EOS>" in tokens:
+                eos_index = tokens.index("<EOS>")
+                tokens = tokens[:eos_index]
         return ' '.join(tokens)
     
     @property
