@@ -348,8 +348,7 @@ if __name__ == "__main__":
     model = Seq2SeqModel(tokenizer.vocab_size, embed_size, tokenizer, dropout_p=dropout_p)
     model.to(device)
     
-    # criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
-    criterion = nn.CrossEntropyLoss()
+    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
     
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     print("开始训练模型...")

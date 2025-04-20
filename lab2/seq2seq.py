@@ -12,9 +12,11 @@ class BahdanauAttention(nn.Module):
         self.Wa = nn.Linear(hidden_size, hidden_size)
         self.Ua = nn.Linear(hidden_size, hidden_size)
         self.Va = nn.Linear(hidden_size, 1)
+        
+        self.temperature = nn.Parameter(torch.ones(1))  # 温度参数，用于控制注意力分布的平滑程度
 
     def forward(self, query, keys, valid_src_len=None):
-        scores = self.Va(torch.tanh(self.Wa(query) + self.Ua(keys)))
+        scores = self.Va(torch.tanh(self.Wa(query) + self.Ua(keys))) / self.temperature
         scores = scores.squeeze(2).unsqueeze(1)
 
         # 如果有有效长度，则使用掩码来忽略填充部分
@@ -218,8 +220,8 @@ class AttnDecoder(nn.Module):
         embedded = self.embed_norm(embedded)
         embedded = self.dropout(embedded)
                 
-        # hidden: (h_n, c_n)，h_n:(num_layers, batch_size, hidden_size), 使用第一层向量作为查询
-        query = hidden[0][0].unsqueeze(1)  
+        # hidden: (h_n, c_n)，h_n:(num_layers, batch_size, hidden_size), 使用最后一层向量作为查询
+        query = hidden[0][-1].unsqueeze(1)  
         
         context, attn_weights = self.attention(query, encoder_outputs, valid_src_len)
         context = self.context_norm(context)
@@ -262,6 +264,10 @@ class Seq2SeqModel(nn.Module):
                     # 偏置初始化为0
                     nn.init.zeros_(param)
         
+        # 初始化编码器新增的线性层
+        nn.init.xavier_uniform_(self.encoder.fc.weight)
+        nn.init.zeros_(self.encoder.fc.bias)
+        
         # LSTM参数初始化
         for lstm in [self.encoder.lstm, self.decoder.lstm]:
             for name, param in lstm.named_parameters():
@@ -274,14 +280,20 @@ class Seq2SeqModel(nn.Module):
                 elif 'bias' in name:
                     # 偏置设为0，但是遗忘门偏置设为较大值以保留记忆
                     nn.init.zeros_(param)
-                    param.data[lstm.hidden_size:2*lstm.hidden_size].fill_(1.0)  # 遗忘门偏置
+                    if 'lstm' in name:
+                        if lstm.bidirectional:
+                            # 双向LSTM时，偏置形状会翻倍
+                            param.data[lstm.hidden_size:2*lstm.hidden_size].fill_(1.0)  # 前向遗忘门偏置
+                            if hasattr(lstm, 'bidirectional') and lstm.bidirectional:
+                                param.data[3*lstm.hidden_size:4*lstm.hidden_size].fill_(1.0)  # 后向遗忘门偏置
+                        else:
+                            param.data[lstm.hidden_size:2*lstm.hidden_size].fill_(1.0)  # 遗忘门偏置
         
         # 输出层初始化
         nn.init.xavier_uniform_(self.decoder.fc_out.weight)
         nn.init.zeros_(self.decoder.fc_out.bias)
         
-        # LayerNorm层通常使用默认初始化
-        
+        # LayerNorm层通常使用默认初始化 
         print("seq2seq 模型初始化完毕")
     
     
