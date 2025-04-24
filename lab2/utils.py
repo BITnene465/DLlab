@@ -1,4 +1,59 @@
-# 绘图逻辑
+# 预处理阶段，转换 mr 字段的格式
+def reformat_mr(text):
+    """
+    将 "name[Blue Spice], eatType[coffee shop], area[city centre]" 格式
+    转换为 "[name = Blue Spice] , [eatType = coffee shop] , [area = city centre]" 格式
+    
+    Args:
+        text: 输入文本字符串
+        
+    Returns:
+        重新格式化的字符串
+    """
+    # 按逗号分割不同的属性
+    parts = text.split(', ')
+    result = []
+    for part in parts:
+        # 找到属性名称和值
+        attr_end = part.find('[')
+        value_start = attr_end + 1
+        value_end = part.rfind(']')
+    
+        if attr_end != -1 and value_end != -1:
+            attr_name = part[:attr_end]
+            attr_value = part[value_start:value_end]
+            # 构建新格式
+            new_format = f"[{attr_name} = {attr_value}]"
+            result.append(new_format)
+    
+    return " , ".join(result)
+
+
+
+# 计算 bleu4分数
+from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
+def calculate_bleu4(references, hypotheses):
+    """
+    计算BLEU-4分数
+    
+    Args:
+        references: 参考翻译（真实目标）列表的列表，每个参考是token列表
+        hypotheses: 模型生成的翻译（预测）列表，每个预测是token列表
+    
+    Returns:
+        bleu4: BLEU-4分数
+    """
+    # 使用平滑函数避免0分
+    smoothie = SmoothingFunction().method1
+    # 计算BLEU-4
+    return corpus_bleu(
+        references, 
+        hypotheses, 
+        weights=(0.25, 0.25, 0.25, 0.25), 
+        smoothing_function=smoothie
+    )
+
+# 绘图相关逻辑
 import matplotlib.pyplot as plt
 import numpy as np
 import os
@@ -61,8 +116,6 @@ def plot_attention(attention, source_tokens, target_tokens, title=None, filename
         plt.close()
     else:
         plt.show()
-
-
 
 
 

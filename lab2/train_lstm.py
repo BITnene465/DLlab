@@ -6,64 +6,39 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 import time
 import json
-from nltk.translate.bleu_score import corpus_bleu, SmoothingFunction
 
 from seq2seq import Seq2SeqModel
-from build_vocab import get_tokenizer_from_file
-from datasets import E2EDataset
-from drawer import plot_train_curve, plot_attention
+from Datasets import E2EDataset
+from myTokenizer import Tokenizer
+from utils import plot_train_curve, calculate_bleu4
 
-
-def calculate_bleu4(references, hypotheses):
-    """
-    计算BLEU-4分数
     
-    Args:
-        references: 参考翻译（真实目标）列表的列表，每个参考是token列表
-        hypotheses: 模型生成的翻译（预测）列表，每个预测是token列表
-    
-    Returns:
-        bleu4: BLEU-4分数
-    """
-    # 使用平滑函数避免0分
-    smoothie = SmoothingFunction().method1
-    # 计算BLEU-4
-    return corpus_bleu(
-        references, 
-        hypotheses, 
-        weights=(0.25, 0.25, 0.25, 0.25), 
-        smoothing_function=smoothie
-    )
-    
-def validate(model: Seq2SeqModel, grouped_data: dict, device):
-    """使用多参考评估模型, batch_size=1"""
+def validate(model: Seq2SeqModel, valid_dataloader, device):
+    """使用多参考评估模型"""
     model.eval()
+    tokenizer = model.tokenizer
     
     # 用于计算BLEU的参考和假设
     references = []
     hypotheses = []
     
     with torch.no_grad():
-        for _, data in tqdm(grouped_data.items(), desc="validating..."):
-            src_ids = data['src_ids'].unsqueeze(0).to(device)  # 添加batch维度
-            src_len = torch.tensor([data['src_len']]).cpu()
+        for batch in tqdm(valid_dataloader, desc="validating..."):
+            src_ids = batch['src_ids'].to(device) 
+            src_len = batch['src_len'].cpu()
             outputs, _, _ = model(
                 input_ids=src_ids,
                 valid_src_len=src_len,
                 max_tgt_len=valid_dataset.max_tgt_len,
                 target_ids=None,  # 不使用 teacher forcing
             )
-            predicted_ids = outputs.argmax(dim=2).squeeze(0).cpu().numpy().tolist()
-            predicted_tokens = model.tokenizer.decode(predicted_ids, endwitheos=True)  # 解码预测的token, 到<EOS>截断
+            predicted_ids = outputs.argmax(dim=2).cpu().numpy().tolist()
+            predicted_tokens = [tokenizer.convert_ids_to_tokens(seq, skip_special_tokens=True, end_with_eos=True) for seq in predicted_ids ]  # 解码预测的token
             
             # 将参考和预测添加到评估列表
-            tgt_tokens_list = data['tgt_tokens_list']
-            for i in range(len(tgt_tokens_list)):
-                if "<EOS>" in tgt_tokens_list[i]:    # 到 <EOS>截断
-                    eos_index = tgt_tokens_list[i].index("<EOS>")
-                    tgt_tokens_list[i] = tgt_tokens_list[i][:eos_index]
-            references.append(tgt_tokens_list)
-            hypotheses.append(predicted_tokens)
+            tgt_tokens_list = batch['tgt_tokens_list']
+            references.extend(tgt_tokens_list)
+            hypotheses.extend(predicted_tokens)
            
     # 计算BLEU-4
     bleu4 = calculate_bleu4(references, hypotheses)
@@ -90,7 +65,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
     for batch in tqdm(dataloader, desc=f"training...  tf_ratio:{teacher_forcing_ratio:.2f}"):
         # 准备数据
         src_ids = batch['src_ids'].to(device)
-        tgt_ids = batch['tgt_ids'].to(device)
+        tgt_ids = batch['tgt_ids'][:, 1:].to(device) # 去掉第一个 BOS token  
         src_len = batch['src_len'].cpu()  # pack_padded_sequence 要求有效长度必须在 CPU 上
         # 训练
         optimizer.zero_grad()     
@@ -113,7 +88,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
     return epoch_loss / len(dataloader)
 
 
-def train(model, train_dataloader, valid_grouped_data, optimizer, criterion, device, 
+def train(model, train_dataloader, valid_dataloader, optimizer, criterion, device, 
           n_epochs, save_dir, patience=3, clip=1.0, tf_ratio=1.0, tf_decay=0.0, tf_min=1.0, 
           best_model_path=None):
     """ 
@@ -154,7 +129,7 @@ def train(model, train_dataloader, valid_grouped_data, optimizer, criterion, dev
         train_loss = train_one_epoch(model, train_dataloader, optimizer, criterion, device, tf_ratio, clip)
         train_losses.append(train_loss)
         # 在验证集上评估
-        valid_bleu = validate(model, valid_grouped_data, device)
+        valid_bleu = validate(model, valid_dataloader, device)
         valid_bleus.append(valid_bleu)  # 记录BLEU分数
         # 计算耗时
         end_time = time.time()
@@ -206,7 +181,7 @@ def train(model, train_dataloader, valid_grouped_data, optimizer, criterion, dev
 def get_default_config():
     """返回默认配置"""
     return {
-        "vocab_path": "./vocab.json",
+        "vocab_path": "./tokenizers/e2e_tokenizer.json",
         "embed_size": 256,
         "batch_size": 64,
         "learning_rate": 0.001,
@@ -325,10 +300,10 @@ if __name__ == "__main__":
     best_model_path = config["best_model_path"]
     
     # 加载词汇表
-    tokenizer = get_tokenizer_from_file(vocab_path=vocab_path)
+    tokenizer = Tokenizer.load(path=vocab_path)
     # 创建数据集
-    train_dataset = E2EDataset(train_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len)
-    valid_dataset = E2EDataset(valid_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len)
+    train_dataset = E2EDataset(train_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len, mode='train')
+    valid_dataset = E2EDataset(valid_path, tokenizer, max_src_len=max_src_len, max_tgt_len=max_tgt_len, mode='valid')
     
     train_dataloader = DataLoader(
         train_dataset, 
@@ -338,24 +313,35 @@ if __name__ == "__main__":
             'src_ids': torch.stack([item['src_ids'] for item in x]),
             'tgt_ids': torch.stack([item['tgt_ids'] for item in x]),
             'src_len': torch.tensor([item['src_len'] for item in x]),
-            'tgt_len': torch.tensor([item['tgt_len'] for item in x]),
             'src_text': [item['src_text'] for item in x],
             'tgt_text': [item['tgt_text'] for item in x]
         }
     )
     
+    valid_dataloader = DataLoader(
+        valid_dataset, 
+        batch_size=batch_size, 
+        shuffle=False,
+        collate_fn=lambda x: {
+            'src_ids': torch.stack([item['src_ids'] for item in x]),
+            'src_len': torch.tensor([item['src_len'] for item in x]),
+            'src_text': [item['src_text'] for item in x],
+            'tgt_text_list': [item['tgt_text_list'] for item in x],
+            'tgt_tokens_list': [item['tgt_tokens_list'] for item in x],
+        }
+    )
+    
     # 训练
-    model = Seq2SeqModel(tokenizer.vocab_size, embed_size, tokenizer, dropout_p=dropout_p)
+    model = Seq2SeqModel(tokenizer.get_vocab_size(), embed_size, tokenizer, dropout_p=dropout_p)
     model.to(device)
     
-    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.pad_token_id)
-    
+    criterion = nn.CrossEntropyLoss(ignore_index=tokenizer.PAD_ID)  # 忽略 PAD token 的损失
     optimizer = optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
     print("开始训练模型...")
     model, train_losses, valid_bleus = train(
         model=model,
         train_dataloader=train_dataloader,
-        valid_grouped_data=valid_dataset.get_grouped_data(),   # 传入的是 验证集分组后的数据
+        valid_dataloader=valid_dataloader,
         optimizer=optimizer,
         criterion=criterion,
         device=device,
@@ -368,5 +354,10 @@ if __name__ == "__main__":
         tf_min=tf_min,
         best_model_path=best_model_path,
     )
+    # 保存最终配置到 save_dir
+    config_path = os.path.join(save_dir, 'config.json')
+    with open(config_path, 'w', encoding='utf-8') as f:
+        json.dump(config, f, ensure_ascii=False, indent=4)
+    print(f"配置已保存到 {config_path}")
     # 绘图
     plot_train_curve(train_losses, valid_bleus, save_dir)

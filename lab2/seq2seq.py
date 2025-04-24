@@ -4,7 +4,7 @@ seq2seq 模型的定义和训练函数的定义
 from torch import nn
 import torch 
 import torch.nn.functional as F
-from build_vocab import MyTokenizer, MyVocabulary
+from myTokenizer import Tokenizer
 
 class BahdanauAttention(nn.Module):
     def __init__(self, hidden_size):
@@ -41,7 +41,7 @@ class BahdanauAttention(nn.Module):
     
 
 class Encoder(nn.Module):
-    def __init__(self, embedding, hidden_size, dropout_p = 0.2, *args, **kwargs):
+    def __init__(self, vocab_size, hidden_size, dropout_p = 0.2, *args, **kwargs):
         """
         Args:
             embedding: 使用 nn.Embedding 创建的嵌入层
@@ -50,7 +50,7 @@ class Encoder(nn.Module):
         """
         super().__init__(*args, **kwargs)
         
-        self.embedding = embedding
+        self.embedding = nn.Embedding(vocab_size, hidden_size)
         self.lstm = nn.LSTM(
             input_size=hidden_size, 
             hidden_size=hidden_size, 
@@ -63,7 +63,7 @@ class Encoder(nn.Module):
         # 将双向LSTM的输出映射到单向
         self.fc = nn.Linear(hidden_size*2, hidden_size) 
         
-        # 归一化层： 缓解过拟合
+        # 归一化层
         self.embed_norm = nn.LayerNorm(hidden_size)
         self.output_norm = nn.LayerNorm(hidden_size)
         
@@ -126,7 +126,7 @@ class Encoder(nn.Module):
     
 
 class AttnDecoder(nn.Module):
-    def __init__(self, embedding, hidden_size, output_size, dropout_p=0.2, *args, **kwargs):
+    def __init__(self, hidden_size, output_size, dropout_p=0.2, *args, **kwargs):
         """
         Args:
             embedding: 使用 nn.Embedding 创建的嵌入层
@@ -136,7 +136,7 @@ class AttnDecoder(nn.Module):
         """
         super().__init__(*args, **kwargs)
         
-        self.embedding = embedding 
+        self.embedding = nn.Embedding(output_size, hidden_size)  # 这里的 vocab_size 也是 decoder 的词表大小
         self.attention = BahdanauAttention(hidden_size=hidden_size)  # 注意力层
         self.lstm = nn.LSTM(input_size=2*hidden_size, hidden_size=hidden_size, batch_first=True, num_layers=3) # 此处 LSTM 的隐藏层结构需要和 encoder 的 LSTM 一致
         self.dropout = nn.Dropout(p=dropout_p)
@@ -236,13 +236,12 @@ class AttnDecoder(nn.Module):
                 
         
 class Seq2SeqModel(nn.Module):
-    def __init__(self, vocab_size: int, embed_size: int, tokenizer: MyTokenizer, dropout_p=0.1, *args, **kwargs):
+    def __init__(self, vocab_size: int, embed_size: int, tokenizer: Tokenizer, dropout_p=0.1, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.tokenizer = tokenizer
         
-        self.sharedEbedding = nn.Embedding(vocab_size, embed_size)
-        self.encoder = Encoder(self.sharedEbedding, embed_size, dropout_p=dropout_p)
-        self.decoder = AttnDecoder(self.sharedEbedding, embed_size, vocab_size, dropout_p=dropout_p)
+        self.encoder = Encoder(vocab_size, embed_size, dropout_p=dropout_p)
+        self.decoder = AttnDecoder(embed_size, vocab_size, dropout_p=dropout_p)
         
         # 初始化模型参数
         self._init_parameters()
@@ -251,9 +250,6 @@ class Seq2SeqModel(nn.Module):
     def _init_parameters(self):
         """初始化模型参数"""
         print("开始初始化模型参数")
-        # 嵌入层初始化 - 使用N(0, 0.1)的正态分布
-        nn.init.normal_(self.sharedEbedding.weight, mean=0, std=0.1)
-        
         # 注意力机制参数初始化
         for attention in [self.decoder.attention]:
             for name, param in attention.named_parameters():
@@ -312,7 +308,7 @@ class Seq2SeqModel(nn.Module):
                                                                     encoder_hidden=encoder_hidden,
                                                                     valid_src_len = valid_src_len,
                                                                     max_tgt_len = max_tgt_len, 
-                                                                    start_token_id=self.tokenizer.sos_token_id,
+                                                                    start_token_id=self.tokenizer.BOS_ID,
                                                                     target=None)
         else:   # 使用teacher forcing
             if torch.rand(1).item() >= teacher_forcing_ratio:
@@ -322,7 +318,7 @@ class Seq2SeqModel(nn.Module):
                                                                 encoder_hidden=encoder_hidden,
                                                                 valid_src_len = valid_src_len,
                                                                 max_tgt_len = max_tgt_len, 
-                                                                start_token_id=self.tokenizer.sos_token_id,
+                                                                start_token_id=self.tokenizer.BOS_ID,
                                                                 target=target_ids)
 
         return decoder_outputs, decoder_hidden, attentions
@@ -345,12 +341,10 @@ if __name__ == "__main__":
     
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"使用设备: {device}")
-    vocab = MyVocabulary()
-    vocab.load("vocab.json")
-    tokenizer = MyTokenizer(vocab=vocab)
-    print(f"词汇表大小: {tokenizer.vocab_size}")
+    tokenizer = Tokenizer.load(path="tokenizers/e2e_tokenizer.json")
+    print(f"词汇表大小: {tokenizer.get_vocab_size()}")
     embed_size = 300
-    model = Seq2SeqModel(tokenizer.vocab_size, embed_size, tokenizer)
+    model = Seq2SeqModel(tokenizer.get_vocab_size(), embed_size, tokenizer)
     model.to(device)
     print("模型结构:")
     print(model)
@@ -361,8 +355,8 @@ if __name__ == "__main__":
     tgt_seq_len = 40
     
     # 随机生成输入序列 (假设 id 范围在 [0, vocab_size-1])
-    input_ids = torch.randint(0, tokenizer.vocab_size, (batch_size, src_seq_len), device=device)
-    target_ids = torch.randint(0, tokenizer.vocab_size, (batch_size, tgt_seq_len), device=device)
+    input_ids = torch.randint(0, tokenizer.get_vocab_size(), (batch_size, src_seq_len), device=device)
+    target_ids = torch.randint(0, tokenizer.get_vocab_size(), (batch_size, tgt_seq_len), device=device)
     valid_src_len = torch.randint(1, src_seq_len + 1, (batch_size,))   # 必须在cpu上
     
     print(f"输入形状: {input_ids.shape}")
@@ -384,7 +378,7 @@ if __name__ == "__main__":
         print(f"注意力权重形状: {attentions.shape}")
         
         # 检查输出是否为预期形状
-        expected_output_shape = (batch_size, tgt_seq_len, tokenizer.vocab_size)
+        expected_output_shape = (batch_size, tgt_seq_len, tokenizer.get_vocab_size())
         assert decoder_outputs.shape == expected_output_shape, f"输出形状不符合预期: {decoder_outputs.shape} vs {expected_output_shape}"
         
         # 检查解码器最后隐藏状态形状
