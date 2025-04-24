@@ -1,2 +1,3 @@
 # Ignore all files in the models directory
 train_history/
+attention_visualization/
