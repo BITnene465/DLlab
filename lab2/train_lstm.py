@@ -293,7 +293,7 @@ if __name__ == "__main__":
     max_tgt_len = config["max_tgt_len"]
     
     if config["save_dir"] is None:
-        save_dir = f"./embed{embed_size}_batch{batch_size}_lr{learning_rate}_clip{clip}_dp{dropout_p}"    # 使用超参数命名
+        save_dir = f"./train_history/embed{embed_size}_batch{batch_size}_lr{learning_rate}_clip{clip}_dp{dropout_p}_tfdecay{tf_decay}_tfmin{tf_min}"    # 使用超参数命名
     else:
         save_dir = config["save_dir"]
     

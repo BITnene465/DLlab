@@ -58,7 +58,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
-
 def plot_train_curve(train_losses, valid_bleus, save_dir):
     plt.figure(figsize=(12, 6))
     plt.subplot(1, 2, 1)
