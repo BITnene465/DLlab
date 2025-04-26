@@ -84,4 +84,3 @@ if __name__ == "__main__":
         model_path=model_path,
         output_dir="./attention_visualization"
     )
-

@@ -6,8 +6,6 @@ from utils import reformat_mr
 
 def get_corpus_from_dataset(dataset_dir: str):
     """
-    从数据集目录中获取语料库if __name__ == "__main__":
-    om_dataset(os.path.join(ROOT_DIR, "e2e_dataset"))
     Args:
         dataset_dir: 数据集所在目录路径
         b_capacity=5000, min_freq=1, lower=True)

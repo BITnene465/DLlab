@@ -86,19 +86,7 @@ def plot_attention(attention, source_tokens, target_tokens, title=None, filename
         title: 图表标题
     """
     plt.figure(figsize=(10, 8))
-    attention = attention.cpu().detach().numpy()
-    
-    # 修剪特殊token
-    if "<pad>" in source_tokens:
-        first_pad = source_tokens.index("<pad>")
-        source_tokens = source_tokens[:first_pad]
-        attention = attention[:, :first_pad]
-    
-    if "<pad>" in target_tokens:
-        first_pad = target_tokens.index("<pad>")
-        target_tokens = target_tokens[:first_pad]
-        attention = attention[:first_pad, :]
-    
+    attention = attention.cpu().detach().numpy()  # 处理tensor
     plt.imshow(attention, cmap='viridis')
     plt.colorbar()
     
@@ -115,6 +103,3 @@ def plot_attention(attention, source_tokens, target_tokens, title=None, filename
         plt.close()
     else:
         plt.show()
-
-
-
