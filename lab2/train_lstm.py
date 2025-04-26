@@ -3,14 +3,13 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 import time
 import json
 
 from seq2seq import Seq2SeqModel
 from Datasets import E2EDataset
 from myTokenizer import Tokenizer
-from utils import plot_train_curve, calculate_bleu4
+from utils import plot_train_curve, calculate_bleu4, mytqdm
 
     
 def validate(model: Seq2SeqModel, valid_dataloader, device):
@@ -23,7 +22,7 @@ def validate(model: Seq2SeqModel, valid_dataloader, device):
     hypotheses = []
     
     with torch.no_grad():
-        for batch in tqdm(valid_dataloader, desc="validating..."):
+        for batch in mytqdm(valid_dataloader, desc="validating..."):
             src_ids = batch['src_ids'].to(device) 
             src_len = batch['src_len'].cpu()
             outputs, _, _ = model(
@@ -62,7 +61,7 @@ def train_one_epoch(model, dataloader, optimizer, criterion, device, teacher_for
     model.train()
     epoch_loss = 0
     
-    for batch in tqdm(dataloader, desc=f"training...  tf_ratio:{teacher_forcing_ratio:.2f}"):
+    for batch in mytqdm(dataloader, desc=f"training...  tf_ratio:{teacher_forcing_ratio:.2f}"):
         # 准备数据
         src_ids = batch['src_ids'].to(device)
         tgt_ids = batch['tgt_ids'][:, 1:].to(device) # 去掉第一个 BOS token  

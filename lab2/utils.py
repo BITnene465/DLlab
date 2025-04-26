@@ -103,3 +103,13 @@ def plot_attention(attention, source_tokens, target_tokens, title=None, filename
         plt.close()
     else:
         plt.show()
+
+# 紧凑进度条
+from tqdm import tqdm
+def mytqdm(*args, **kwargs):
+    """创建紧凑型进度条"""
+    if 'bar_format' not in kwargs:
+        kwargs['bar_format'] = '{l_bar}{bar:10}{r_bar}'
+    if 'leave' not in kwargs:
+        kwargs['leave'] = True
+    return tqdm(*args, **kwargs)
