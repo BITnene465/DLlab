@@ -1,11 +1,11 @@
 from torch.utils.data import DataLoader
 import torch
 import os
-from tqdm import tqdm
 
 from myTokenizer import Tokenizer
 from Datasets import E2EDataset
 from seq2seq import Seq2SeqModel
+from utils import mytqdm
 
 
 def predict(test_loader, model, device, max_gen_len=50):
@@ -23,7 +23,7 @@ def predict(test_loader, model, device, max_gen_len=50):
     
     predictions = []
     with torch.no_grad():
-        for batch in tqdm(test_loader, desc="testing"):
+        for batch in mytqdm(test_loader, desc="testing"):
             src_ids = batch['src_ids'].to(device)
             src_len = batch['src_len'].cpu()  
             src_text = batch['src_text']
