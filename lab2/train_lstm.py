@@ -12,7 +12,7 @@ from myTokenizer import Tokenizer
 from utils import plot_train_curve, calculate_bleu4, mytqdm
 
     
-def validate(model: Seq2SeqModel, valid_dataloader, device):
+def validate(model: Seq2SeqModel, valid_dataloader, device, max_tgt_len=60):
     """使用多参考评估模型"""
     model.eval()
     tokenizer = model.tokenizer
@@ -28,7 +28,7 @@ def validate(model: Seq2SeqModel, valid_dataloader, device):
             outputs, _, _ = model(
                 input_ids=src_ids,
                 valid_src_len=src_len,
-                max_tgt_len=valid_dataset.max_tgt_len,
+                max_tgt_len=max_tgt_len,
                 target_ids=None,  # 不使用 teacher forcing
             )
             predicted_ids = outputs.argmax(dim=2).cpu().numpy().tolist()
