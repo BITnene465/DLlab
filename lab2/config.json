@@ -1,0 +1,20 @@
+{
+    "vocab_path": "./tokenizers/e2e_tokenizer.json",
+    "embed_size": 256,
+    "batch_size": 256,
+    "learning_rate": 0.0001,
+    "weight_decay": 1e-05,
+    "clip": 1000.0,
+    "n_epochs": 50,
+    "patience": 25,
+    "dropout_p": 0.3,
+    "max_src_len": 60,
+    "max_tgt_len": 60,
+    "dataset_dir": "./e2e_dataset",
+    "save_dir": null,
+    "best_model_path": null,
+    "tf_ratio": 1.0,
+    "tf_decay": 0,
+    "tf_min": 1.0,
+    "dropout": 0.3
+}
