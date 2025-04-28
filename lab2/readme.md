@@ -30,3 +30,17 @@
 关于掩码注意力和lstm处理填充的batch序列
 - 事先准备一个 valid_src_len 是十分有必要的
 
+
+## 项目结构
+e2e_dataset 目录：包含训练集、验证集、测试集的csv文件。
+tokenizers 目录：用于保存得到的分词器模型。
+train_history 目录：用于保存训练过程中的模型和配置文件。
+attention_visualization 目录：用于保存注意力可视化的热力图。
+Datasets.py 模块文件：包含数据集处理类 E2Edaraset 等。
+myTokenizer.py 模块文件：包含自定义的分词工具类 Tokenizer。
+seq2seq.py 模块文件：包含序列生成模型完整定义，包括encoder，decoder，注意力层等。
+utils.py 模块文件：包含一些通用的工具函数，如绘图相关函数与重构mr字段的函数。
+build_vocab.py 脚本文件：用于构建词汇表和分词器，并且将分词器保存到 tokenizers中。
+train_lstm.py 脚本文件：训练模型的脚本，包含训练和验证的逻辑。
+lstm_predict.py 脚本文件：包含test逻辑，用于生成测试集的生成结果。
+visualize_attentions.py 脚本文件：用于生成注意力可视化热力图。
