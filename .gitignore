@@ -37,3 +37,5 @@ Thumbs.db
 # 其他特定文件
 lab1/predict_labels.txt
 lab1/demo.py
+lab1.5-gan/data/
+lab1.5-gan/images/
