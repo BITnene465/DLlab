@@ -1,0 +1,21 @@
+{"image": "v1_0.png", "text": "What is the woman doing in the image?", "answer": "She is taking a photo with a silver camera.", "category": "conv", "question_id": 0}
+{"image": "v1_0.png", "text": "What color is the woman's jacket?", "answer": "The jacket is blue.", "category": "conv", "question_id": 1}
+{"image": "v1_1.png", "text": "What are the two people doing in the image?", "answer": "They are walking down a tree-lined path.", "category": "conv", "question_id": 2}
+{"image": "v1_1.png", "text": "What color is the man's jacket?", "answer": "The jacket is black.", "category": "conv", "question_id": 3}
+{"image": "v1_1.png", "text": "Are there any streetlights along the path?", "answer": "Yes, there are several streetlights on both sides of the path.", "category": "conv", "question_id": 4}
+{"image": "v1_2.png", "text": "What is the girl doing in the image?", "answer": "She is playing a piano.", "category": "conv", "question_id": 5}
+{"image": "v1_2.png", "text": "What color is the girl's dress?", "answer": "The dress is black.", "category": "conv", "question_id": 6}
+{"image": "v1_2.png", "text": "What color is the piano?", "answer": "The piano is dark brown.", "category": "conv", "question_id": 7}
+{"image": "v1_2.png", "text": "What color are the girl's hair?", "answer": "Her hair is dark brown.", "category": "conv", "question_id": 8}
+{"image": "v1_2.png", "text": "Is she wearing any accessories?", "answer": "Yes, she is wearing white earrings.", "category": "conv", "question_id": 9}
+{"image": "v1_3.png", "text": "What is the man holding in his hand?", "answer": "He is holding a cigarette.", "category": "conv", "question_id": 10}
+{"image": "v1_3.png", "text": "What color is the man's suit?", "answer": "The suit is black.", "category": "conv", "question_id": 11}
+{"image": "v1_3.png", "text": "What is visible in the background?", "answer": "A blue sky with white clouds and a metal pole are visible.", "category": "conv", "question_id": 12}
+{"image": "v1_4.png", "text": "Where is this scene taking place?", "answer": "This scene is set in a courtroom during Andy Dufresne's trial.", "category": "conv", "question_id": 13}
+{"image": "v1_4.png", "text": "What emotion does Andy Dufresne's expression convey?", "answer": "His expression conveys determination and quiet resolve, reflecting his inner strength despite the unjust trial.", "category": "conv", "question_id": 14}
+{"image": "v1_4.png", "text": "What symbolic element in the background represents institutional authority?", "answer": "The framed portraits of past judges on the wall symbolize the weight of institutional authority and the systemic injustice Andy faces.", "category": "conv", "question_id": 15}
+{"image": "v1_4.png", "text": "How does this scene foreshadow Andy's later actions in the movie?", "answer": "His calm demeanor here foreshadows his strategic patience in planning his escape and exposing the warden's corruption.", "category": "conv", "question_id": 16}
+{"image": "v1_4.png", "text": "Why might the director have chosen dim lighting for this scene?", "answer": "The subdued lighting emphasizes the oppressive atmosphere of the trial and contrasts with the eventual hope symbolized by Andy's escape.", "category": "conv", "question_id": 17}
+{"image": "v1_5.png", "text": "What does the door in the background symbolize in this scene?", "answer": "The door likely represents a threshold between confinement and freedom, echoing themes of escape and self-discovery.", "category": "conv", "question_id": 18}
+{"image": "v1_5.png", "text": "What emotion does the man's posture convey?", "answer": "His hunched posture with hands clasped to his chest suggests introspection or emotional turmoil, similar to Andy Dufresne's quiet resolve in *The Shawshank Redemption*.", "category": "conv", "question_id": 19}
+{"image": "v1_5.png", "text": "How does the stage design reflect the 'three questions' framework mentioned in the knowledge base?", "answer": "The minimalist setup (door, platform, blue backdrop) mirrors the stripped-down existential queries posed in philosophical contexts (e.g., 'Who am I?' or 'Where am I going?').", "category": "conv", "question_id": 20}
